@@ -5,6 +5,14 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import numpy as np
 
+# Import our custom modules
+from utils.google_sheets import get_google_sheets_data
+from utils.data_processor import process_chess_data, calculate_statistics, get_opening_stats
+from utils.ml_analysis import generate_performance_insights
+from components.charts import (create_rating_progression, create_win_loss_pie,
+                             create_performance_charts, create_opening_bar)
+from components.filters import create_filters, apply_filters
+
 # Page configuration
 st.set_page_config(
     page_title="♟️ Chess Analytics Dashboard",
@@ -70,154 +78,166 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Generate sample data for demonstration
-@st.cache_data
-def generate_sample_data():
-    """Generate sample chess data for demonstration"""
-    np.random.seed(42)
-    dates = pd.date_range('2024-01-01', periods=50, freq='D')
+# Load and process data
+@st.cache_data(ttl=600)  # Cache data for 10 minutes
+def load_data():
+    df = get_google_sheets_data()
+    if df is not None:
+        return process_chess_data(df)
+    return None
+
+# Main app
+def main():
+    # Load data
+    with st.spinner('Fetching chess data from Google Sheets...'):
+        df = load_data()
+
+    if df is None:
+        st.error("Failed to load chess data. Please check the connection and try again.")
+        return
+
+    # Create filters
+    filters = create_filters(df)
+    filtered_df = apply_filters(df, filters)
+
+    # Calculate statistics
+    stats = calculate_statistics(filtered_df)
+
+    # Display metrics in expander
+    with st.expander("Tournament Statistics", expanded=True):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Games", stats['total_games'])
+        with col2:
+            st.metric("Current Rating", f"{stats['current_rating']:.0f}")
+        with col3:
+            st.metric("Win Percentage", f"{stats['win_percentage']:.1f}%")
+        with col4:
+            avg_accuracy = filtered_df['Accuracy %'].mean() if 'Accuracy %' in filtered_df.columns else 0
+            st.metric("Avg Accuracy", f"{avg_accuracy:.1f}%")
+
+    # Create performance metric charts with side filtering
+    st.subheader("Performance Metrics")
+    performance_charts = create_performance_charts(filtered_df, filters['side_filter'])
+
+    # Display charts in tabs
+    tab1, tab2 = st.tabs(["Rating", "Results"])
+
+    with tab1:
+        st.plotly_chart(create_rating_progression(filtered_df, filters['side_filter']), use_container_width=True)
+
+    with tab2:
+        st.plotly_chart(create_win_loss_pie(filtered_df, filters['side_filter']), use_container_width=True)
     
-    data = {
-        'Date': dates,
-        'Side': np.random.choice(['W', 'B'], 50),
-        'Result': np.random.choice(['WIN', 'LOSS', 'DRAW'], 50, p=[0.4, 0.35, 0.25]),
-        'ACL': np.random.normal(45, 15, 50).clip(10, 100),
-        'Accuracy %': np.random.normal(85, 10, 50).clip(60, 98),
-        'Opponent Name': [f'Player {i+1}' for i in range(50)],
-        'Opp. ELO': np.random.normal(1500, 100, 50).clip(1300, 1700).astype(int),
-        'New Rating': np.random.normal(1520, 50, 50).clip(1400, 1600).astype(int)
-    }
+    # Accuracy metrics section
+    st.subheader("Accuracy Metrics")
+    accuracy_tab, acl_tab = st.tabs(["Accuracy %", "ACL"])
     
-    return pd.DataFrame(data)
+    with accuracy_tab:
+        st.plotly_chart(performance_charts['accuracy'], use_container_width=True)
+    
+    with acl_tab:
+        st.plotly_chart(performance_charts['acl'], use_container_width=True)
+        
+    # Game ratings section
+    st.subheader("Rating Metrics")
+    game_tab, perf_tab = st.tabs(["Game Rating", "Performance Rating"])
+    
+    with game_tab:
+        st.plotly_chart(performance_charts['game_rating'], use_container_width=True)
+        
+    with perf_tab:
+        st.plotly_chart(performance_charts['performance_rating'], use_container_width=True)
 
-# Load data
-with st.spinner('Loading chess data...'):
-    df = generate_sample_data()
+    # Opening Analysis section
+    if 'PGN' in filtered_df.columns:
+        with st.expander("Opening Analysis", expanded=False):
+            opening_stats = get_opening_stats(filtered_df)
+            if not opening_stats.empty:
+                st.plotly_chart(create_opening_bar(opening_stats), use_container_width=True)
+            else:
+                st.info("No opening data available")
 
-# Calculate statistics
-total_games = len(df)
-current_rating = df['New Rating'].iloc[-1]
-wins = len(df[df['Result'] == 'WIN'])
-win_percentage = (wins / total_games * 100) if total_games > 0 else 0
+    # ML-based Analysis Section
+    if len(filtered_df) >= 5:  # Only show ML analysis if we have enough games
+        with st.expander("AI Performance Analysis", expanded=False):
+            with st.spinner("Generating AI insights..."):
+                insights = generate_performance_insights(filtered_df)
 
-# Display metrics
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Total Games", total_games)
-with col2:
-    st.metric("Current Rating", f"{current_rating}")
-with col3:
-    st.metric("Win Percentage", f"{win_percentage:.1f}%")
-with col4:
-    st.metric("Avg Accuracy", f"{df['Accuracy %'].mean():.1f}%")
+                tab1, tab2, tab3 = st.tabs(["Insights", "Analysis", "Tips"])
 
-# Performance Charts
-st.subheader("📊 Performance Metrics")
+                with tab1:
+                    for insight in insights['text_insights']:
+                        if insight.startswith(('📈', '📊', '🎯', '⚖️')):
+                            st.info(insight)
+                        elif insight.startswith(('⚔️', '🧮', '🏰')):
+                            st.warning(insight)
+                        else:
+                            st.success(insight)
 
-# Rating progression
-fig_rating = go.Figure()
-fig_rating.add_trace(go.Scatter(
-    x=df['Date'],
-    y=df['New Rating'],
-    mode='lines+markers',
-    name='Rating',
-    line=dict(color='#4CAF50', shape='spline'),
-    marker=dict(size=4)
-))
-fig_rating.update_layout(
-    title="Rating Progression Over Time",
-    xaxis_title="Date",
-    yaxis_title="Rating",
-    height=400
-)
-st.plotly_chart(fig_rating, use_container_width=True)
+                with tab2:
+                    st.dataframe(insights['performance_clusters'], use_container_width=True)
 
-# Win/Loss distribution
-col1, col2 = st.columns(2)
+                with tab3:
+                    recommendations = [
+                        insight for insight in insights['text_insights'] 
+                        if any(insight.startswith(emoji) for emoji in ['🎯', '⚔️', '🧮', '🏰', '🧘‍♂️', '⏰', '🌟'])
+                    ]
+                    for rec in recommendations:
+                        st.success(rec)
+    else:
+        st.info("Need at least 5 games for AI analysis")
 
-with col1:
-    result_counts = df['Result'].value_counts()
-    fig_results = px.pie(
-        values=result_counts.values,
-        names=result_counts.index,
-        title="Game Results Distribution",
-        color_discrete_map={'WIN': '#4CAF50', 'LOSS': '#f44336', 'DRAW': '#2196F3'}
-    )
-    st.plotly_chart(fig_results, use_container_width=True)
+    # Display raw data table - show all games, reverse order, and hide # column and sparkline data
+    with st.expander("Game History", expanded=False):
+        if len(filtered_df) > 0:
+            # Create a copy of the dataframe to avoid modifying the original
+            display_df = filtered_df.copy()
+            
+            # Drop the # column, sparkline data column, and RESULT column since we don't need to show them
+            columns_to_drop = []
+            if '#' in display_df.columns:
+                columns_to_drop.append('#')
+            if 'sparkline data' in display_df.columns:
+                columns_to_drop.append('sparkline data')
+            if 'RESULT' in display_df.columns:
+                columns_to_drop.append('RESULT')
+            if 'Performance Rating' in display_df.columns:
+                columns_to_drop.append('Performance Rating')
+            if 'New Rating' in display_df.columns:
+                columns_to_drop.append('New Rating')
+            if 'Game Rating' in display_df.columns:
+                columns_to_drop.append('Game Rating')
+            # Also hide PGN column from game history as it's large
+            if 'PGN' in display_df.columns:
+                columns_to_drop.append('PGN')
+            
+            if columns_to_drop:
+                display_df = display_df.drop(columns=columns_to_drop)
+            
+            # Format the date to show only the date part (no time)
+            display_df['Date'] = display_df['Date'].dt.date
+            
+            # Sort by Date in descending order (most recent first)
+            display_df = display_df.sort_values('Date', ascending=False)
+            
+            # Reorder columns as requested: Date, Side, Result, ACL, Accuracy %, Opponent Name, Opp. ELO
+            column_order = ['Date', 'Side', 'Result', 'ACL', 'Accuracy %', 'Opponent Name', 'Opp. ELO']
+            display_df = display_df[column_order]
+            
+            # Add opponent search functionality
+            st.subheader("Search by Opponent")
+            opponent_search = st.text_input("Enter opponent name to search", "", key="opponent_search")
+            
+            # Always filter by opponent name (even if empty string)
+            # When empty, it will match all names (no filtering)
+            # Case-insensitive search using .str.contains()
+            if opponent_search:
+                display_df = display_df[display_df['Opponent Name'].str.lower().str.contains(opponent_search.lower())]
+                st.write(f"Found {len(display_df)} games against opponents matching '{opponent_search}'")
+            
+            # Show all games at once
+            st.dataframe(display_df, use_container_width=True)
 
-with col2:
-    # Accuracy over time
-    fig_accuracy = go.Figure()
-    fig_accuracy.add_trace(go.Scatter(
-        x=df['Date'],
-        y=df['Accuracy %'],
-        mode='lines+markers',
-        name='Accuracy %',
-        line=dict(color='#FF9800', shape='spline'),
-        marker=dict(size=4)
-    ))
-    fig_accuracy.update_layout(
-        title="Accuracy % Over Time",
-        xaxis_title="Date",
-        yaxis_title="Accuracy %",
-        height=400
-    )
-    st.plotly_chart(fig_accuracy, use_container_width=True)
-
-# Side performance analysis
-st.subheader("♟️ Performance by Side")
-
-side_stats = df.groupby('Side').agg({
-    'Result': lambda x: (x == 'WIN').sum() / len(x) * 100,
-    'Accuracy %': 'mean',
-    'ACL': 'mean'
-}).round(1)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("White Win %", f"{side_stats.loc['W', 'Result']:.1f}%")
-with col2:
-    st.metric("Black Win %", f"{side_stats.loc['B', 'Result']:.1f}%")
-with col3:
-    st.metric("Overall Win %", f"{win_percentage:.1f}%")
-
-# Game history table
-st.subheader("📋 Recent Games")
-
-# Format the display dataframe
-display_df = df.copy()
-display_df['Date'] = display_df['Date'].dt.date
-display_df = display_df.sort_values('Date', ascending=False)
-
-# Show last 10 games
-st.dataframe(
-    display_df[['Date', 'Side', 'Result', 'Accuracy %', 'ACL', 'Opponent Name', 'Opp. ELO']].head(10),
-    use_container_width=True
-)
-
-# AI Insights section
-st.subheader("🤖 AI Performance Insights")
-
-insights = [
-    "📈 Your rating shows a positive trend over the last 50 games",
-    "🎯 Your average accuracy of 85.2% indicates strong tactical play",
-    "⚖️ You perform slightly better with White pieces (42% vs 38% win rate)",
-    "📊 Your ACL of 45.2 shows good positional understanding",
-    "🔍 Focus on endgame technique - 25% of your losses occur in the final phase"
-]
-
-for insight in insights:
-    st.info(insight)
-
-# Future features preview
-with st.expander("🚀 Upcoming Features"):
-    st.write("""
-    - **Opening Analysis**: Hierarchical tree visualization of your opening repertoire
-    - **PGN Game Analysis**: Detailed move-by-move analysis with mistake detection
-    - **Machine Learning**: AI-powered performance predictions and improvement recommendations
-    - **Google Sheets Integration**: Automatic data synchronization from your chess spreadsheet
-    - **Mobile Optimization**: Enhanced mobile experience for on-the-go analysis
-    """)
-
-st.success("🎉 Welcome to your Chess Analytics Dashboard! This is a demonstration with sample data. Connect your real chess data to see your actual performance metrics.")
+if __name__ == "__main__":
+    main()
