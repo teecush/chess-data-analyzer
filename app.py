@@ -13,6 +13,7 @@ from components.charts import (create_rating_progression, create_win_loss_pie,
                              create_performance_charts, create_opening_bar)
 from components.filters import create_filters, apply_filters
 from components.opening_explorer import create_opening_explorer
+from utils.debug import debug_data_loading
 
 # Page configuration
 st.set_page_config(
@@ -153,6 +154,8 @@ def main():
     # Opening Analysis section
     if 'PGN' in filtered_df.columns:
         with st.expander("Opening Analysis", expanded=False):
+            # Debug data loading
+            debug_data_loading(filtered_df)
             create_opening_explorer(filtered_df)
 
     # ML-based Analysis Section

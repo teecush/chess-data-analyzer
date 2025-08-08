@@ -1,0 +1,80 @@
+/* Chess Analytics Dashboard Styles */
+
+.chess-header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+    color: white;
+}
+
+.chess-header h1 {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.chess-header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+.chess-links {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.chess-links a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: bold;
+    margin: 0 0.5rem;
+}
+
+.chess-links a:hover {
+    text-decoration: underline;
+}
+
+/* Chart container styles */
+.stPlotlyChart {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Metric card styles */
+.metric-container {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1rem;
+}
+
+/* Sidebar styles */
+.sidebar .sidebar-content {
+    background: #f8f9fa;
+}
+
+/* Tab styles */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 2px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    background-color: #f0f2f6;
+    border-radius: 4px 4px 0px 0px;
+    gap: 1px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #667eea;
+    color: white;
+}
