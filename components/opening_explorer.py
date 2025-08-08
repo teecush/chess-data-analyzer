@@ -8,6 +8,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import re
+import chess.pgn
+import io
 
 def extract_opening_data(df):
     """Extract opening information from PGN data"""
@@ -19,22 +21,62 @@ def extract_opening_data(df):
     results = []
     sides = []
     
-    # Regular expressions to extract opening and variation info from PGN
-    opening_pattern = r'\[Opening\s+"([^"]+)"\]'
-    variation_pattern = r'\[Variation\s+"([^"]+)"\]'
-    
     for idx, row in df.iterrows():
         pgn = row.get('PGN', '')
         if pd.isna(pgn) or not pgn:
             continue
             
-        # Extract opening
-        opening_match = re.search(opening_pattern, pgn)
-        opening = opening_match.group(1) if opening_match else "Unknown Opening"
+        # Try to extract opening from PGN headers first
+        opening_match = re.search(r'\[Opening\s+"([^"]+)"\]', pgn)
+        variation_match = re.search(r'\[Variation\s+"([^"]+)"\]', pgn)
         
-        # Extract variation if present
-        variation_match = re.search(variation_pattern, pgn)
-        variation = variation_match.group(1) if variation_match else "Main Line"
+        if opening_match:
+            opening = opening_match.group(1)
+            variation = variation_match.group(1) if variation_match else "Main Line"
+        else:
+            # If no opening tags, try to extract from game analysis
+            # For now, use a generic approach based on first few moves
+            opening = "Standard Opening"
+            variation = "Main Line"
+            
+            # Try to extract some basic opening info from the game
+            try:
+                game = chess.pgn.read_game(io.StringIO(pgn))
+                if game:
+                    # Get the first few moves to identify opening
+                    moves = []
+                    board = game.board()
+                    for move in game.mainline_moves():
+                        moves.append(board.san(move))
+                        if len(moves) >= 4:  # Look at first 4 moves
+                            break
+                        board.push(move)
+                    
+                    if moves:
+                        # Simple opening classification based on first moves
+                        if moves[0] == 'e4':
+                            if len(moves) > 1 and moves[1] == 'e5':
+                                opening = "Open Game"
+                            elif len(moves) > 1 and moves[1] == 'c5':
+                                opening = "Sicilian Defense"
+                            else:
+                                opening = "King's Pawn Game"
+                        elif moves[0] == 'd4':
+                            if len(moves) > 1 and moves[1] == 'd5':
+                                opening = "Closed Game"
+                            elif len(moves) > 1 and moves[1] == 'Nf6':
+                                opening = "Indian Defense"
+                            else:
+                                opening = "Queen's Pawn Game"
+                        elif moves[0] == 'c4':
+                            opening = "English Opening"
+                        elif moves[0] == 'Nf3':
+                            opening = "Reti Opening"
+                        else:
+                            opening = "Other Opening"
+            except:
+                opening = "Unknown Opening"
+                variation = "Main Line"
         
         # Get result and side
         result = row.get('Result', 'Unknown')
@@ -54,21 +96,6 @@ def extract_opening_data(df):
     })
     
     return opening_df
-
-def get_win_rate_color(win_rate):
-    """Get color based on win rate"""
-    if win_rate <= 20:
-        return 'red'
-    elif win_rate <= 35:
-        return 'pink'
-    elif win_rate <= 65:
-        return 'yellow'
-    elif win_rate <= 80:
-        return 'lightgreen'
-    elif win_rate <= 95:
-        return 'darkgreen'
-    else:
-        return 'blue'
 
 def create_opening_statistics_table(opening_df):
     """Create detailed opening statistics table with color coding"""
@@ -260,7 +287,7 @@ def create_opening_explorer(df):
         with col3:
             st.markdown("🟡 35-65%")
         with col4:
-            st.markdown("�� 65-80%")
+            st.markdown("🟢 65-80%")
         with col5:
             st.markdown("🟢 80-95%")
         with col6:
