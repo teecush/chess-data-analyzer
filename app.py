@@ -12,6 +12,7 @@ from utils.ml_analysis import generate_performance_insights
 from components.charts import (create_rating_progression, create_win_loss_pie,
                              create_performance_charts, create_opening_bar)
 from components.filters import create_filters, apply_filters
+from components.opening_explorer import create_opening_explorer
 
 # Page configuration
 st.set_page_config(
@@ -152,11 +153,7 @@ def main():
     # Opening Analysis section
     if 'PGN' in filtered_df.columns:
         with st.expander("Opening Analysis", expanded=False):
-            opening_stats = get_opening_stats(filtered_df)
-            if not opening_stats.empty:
-                st.plotly_chart(create_opening_bar(opening_stats), use_container_width=True)
-            else:
-                st.info("No opening data available")
+            create_opening_explorer(filtered_df)
 
     # ML-based Analysis Section
     if len(filtered_df) >= 5:  # Only show ML analysis if we have enough games
